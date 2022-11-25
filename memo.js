@@ -1,5 +1,5 @@
 import React from 'react';
-import {StyleSheet} from 'react-native';
+import {StyleSheet, Dimensions} from 'react-native';
 
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -17,6 +17,7 @@ import Animated, {
   Extrapolate,
   interpolateColor,
   runOnJS,
+  withTiming,
 } from 'react-native-reanimated';
 import {useState} from 'react';
 
@@ -25,111 +26,80 @@ const BUTTON_HEIGHT = 100;
 const BUTTON_PADDING = 10;
 const SWIPEABLE_DIMENSIONS = BUTTON_HEIGHT - 2 * BUTTON_PADDING;
 
-const H_WAVE_RANGE = SWIPEABLE_DIMENSIONS + 2 * BUTTON_PADDING;
+// SWIPEABLE_DIMENSIONS: 80
+
 const H_SWIPE_RANGE = BUTTON_WIDTH - 2 * BUTTON_PADDING - SWIPEABLE_DIMENSIONS;
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
+
+// H_SWIPE_RANGE : 250
+
+const {width: SCREEN_WIDTH} = Dimensions.get('window');
+
+// SCREEN_WIDTH: 360
+
+const THRESHOLD = SCREEN_WIDTH / 3;
+
+// THRESHOLD: 120
 
 const SwipeButton = ({onToggle}) => {
-  // Animated value for X translation
-  const X = useSharedValue(0);
-  // Toggled State
+  const translateX = useSharedValue(0);
   const [toggled, setToggled] = useState(false);
 
-  // Fires when animation ends
   const handleComplete = isToggled => {
     if (isToggled !== toggled) {
       setToggled(isToggled);
-      onToggle(isToggled);
     }
   };
 
-  // Gesture Handler Events
   const animatedGestureHandler = useAnimatedGestureHandler({
-    onStart: (_, ctx) => {
-      ctx.completed = toggled;
+    onStart: (_, context) => {
+      context.x = translateX.value;
+      context.completed = toggled;
     },
-    onActive: (e, ctx) => {
+
+    onActive: (event, context) => {
       let newValue;
-      if (ctx.completed) {
-        newValue = H_SWIPE_RANGE + e.translationX;
+      if (context.completed) {
+        // 오른족에서 왼쪽으로
+        newValue = Math.max(event.translationX + context.x, 0);
       } else {
-        newValue = e.translationX;
+        // 왼쪽에서 오른쪽으로
+        newValue = event.translationX;
       }
 
       if (newValue >= 0 && newValue <= H_SWIPE_RANGE) {
-        X.value = newValue;
+        //  맨 왼쪽에서 더 왼쪽으로 가지 않거나,
+        // 맨 오른쪽에서 더 오른쪽으로 가지 않았을 때
+        translateX.value = newValue;
       }
     },
     onEnd: () => {
-      if (X.value < BUTTON_WIDTH / 2 - SWIPEABLE_DIMENSIONS / 2) {
-        X.value = withSpring(0);
+      if (translateX.value <= THRESHOLD) {
+        translateX.value = withTiming(0);
         runOnJS(handleComplete)(false);
       } else {
-        X.value = withSpring(H_SWIPE_RANGE);
+        translateX.value = withTiming(H_SWIPE_RANGE);
         runOnJS(handleComplete)(true);
       }
     },
   });
 
-  const InterpolateXInput = [0, H_SWIPE_RANGE];
-  const AnimatedStyles = {
-    swipeCont: useAnimatedStyle(() => {
-      return {};
-    }),
-    colorWave: useAnimatedStyle(() => {
-      return {
-        width: H_WAVE_RANGE + X.value,
-
-        opacity: interpolate(X.value, InterpolateXInput, [0, 1]),
-      };
-    }),
-    swipeable: useAnimatedStyle(() => {
-      return {
-        backgroundColor: interpolateColor(
-          X.value,
-          [0, BUTTON_WIDTH - SWIPEABLE_DIMENSIONS - BUTTON_PADDING],
-          ['#06d6a0', '#fff'],
-        ),
-        transform: [{translateX: X.value}],
-      };
-    }),
-    swipeText: useAnimatedStyle(() => {
-      return {
-        opacity: interpolate(
-          X.value,
-          InterpolateXInput,
-          [0.7, 0],
-          Extrapolate.CLAMP,
-        ),
-        transform: [
-          {
-            translateX: interpolate(
-              X.value,
-              InterpolateXInput,
-              [0, BUTTON_WIDTH / 2 - SWIPEABLE_DIMENSIONS],
-              Extrapolate.CLAMP,
-            ),
-          },
-        ],
-      };
-    }),
-  };
+  const rStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        {perspective: 100},
+        {
+          translateX: translateX.value,
+        },
+      ],
+    };
+  }, []);
 
   return (
     <GestureHandlerRootView>
-      <Animated.View style={[styles.swipeCont, AnimatedStyles.swipeCont]}>
-        <AnimatedLinearGradient
-          style={[AnimatedStyles.colorWave, styles.colorWave]}
-          colors={['#06d6a0', '#1b9aaa']}
-          start={{x: 0.0, y: 0.5}}
-          end={{x: 1, y: 0.5}}
-        />
+      <Animated.View style={[styles.swipeCont]}>
         <PanGestureHandler onGestureEvent={animatedGestureHandler}>
-          <Animated.View style={[styles.swipeable, AnimatedStyles.swipeable]} />
+          <Animated.View style={[styles.swipeable, rStyle]} />
         </PanGestureHandler>
-        <Animated.Text style={[styles.swipeText, AnimatedStyles.swipeText]}>
-          Swipe Me
-        </Animated.Text>
       </Animated.View>
     </GestureHandlerRootView>
   );
@@ -139,20 +109,14 @@ const styles = StyleSheet.create({
   swipeCont: {
     height: BUTTON_HEIGHT,
     width: BUTTON_WIDTH,
-    backgroundColor: '#fff',
     borderRadius: BUTTON_HEIGHT,
     padding: BUTTON_PADDING,
-    display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
+    backgroundColor: 'pink',
   },
-  colorWave: {
-    position: 'absolute',
-    left: 0,
-    height: BUTTON_HEIGHT,
-    borderRadius: BUTTON_HEIGHT,
-  },
+
   swipeable: {
     position: 'absolute',
     left: BUTTON_PADDING,
@@ -160,13 +124,7 @@ const styles = StyleSheet.create({
     width: SWIPEABLE_DIMENSIONS,
     borderRadius: SWIPEABLE_DIMENSIONS,
     zIndex: 3,
-  },
-  swipeText: {
-    alignSelf: 'center',
-    fontSize: 20,
-    fontWeight: 'bold',
-    zIndex: 2,
-    color: '#1b9aaa',
+    backgroundColor: 'lightblue',
   },
 });
 

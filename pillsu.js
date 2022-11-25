@@ -1,4 +1,4 @@
-//  필수 기능만
+// 필수기능
 import React from 'react';
 import {StyleSheet} from 'react-native';
 
